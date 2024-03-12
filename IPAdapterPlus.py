@@ -367,7 +367,7 @@ class IPAdapter(nn.Module):
             self.image_proj_model = self.init_proj()
 
         self.image_proj_model.load_state_dict(ipadapter_model["image_proj"])
-        self.ip_layers = To_KV(ipadapter_model["ip_adapter"])
+        self.ip_layers = ipadapter_model["ip_layers"]
 
     def init_proj(self):
         image_proj_model = ImageProjModel(
@@ -603,6 +603,8 @@ class IPAdapterModelLoader:
 
         if not "ip_adapter" in model.keys() or not model["ip_adapter"]:
             raise Exception("invalid IPAdapter model {}".format(ckpt_path))
+
+        model["ip_layers"] = To_KV(model["ip_adapter"])
 
         return (model,)
 
