@@ -1,3 +1,7 @@
+import pathlib
+import pickle
+from pathlib import Path
+
 import torch
 import os
 import math
@@ -604,8 +608,17 @@ class IPAdapterModelLoader:
         if not "ip_adapter" in model.keys() or not model["ip_adapter"]:
             raise Exception("invalid IPAdapter model {}".format(ckpt_path))
 
-        model["ip_layers"] = To_KV(model["ip_adapter"])
-
+        ip_layers_file_name = f"{Path(ckpt_path).stem}.ip_layers"
+        ip_layers_cache_path = folder_paths.get_full_path("ipadapter", ip_layers_file_name)
+        if ip_layers_cache_path:
+            model["ip_layers"] = pickle.load(open(ip_layers_cache_path, 'rb'))
+            print(f"Loading ip_layers from {ip_layers_cache_path}")
+        else:
+            ip_layers = To_KV(model["ip_adapter"])
+            ip_layers_cache_path = os.path.join(pathlib.Path(ckpt_path).parent, ip_layers_file_name)
+            pickle.dump(ip_layers, open(ip_layers_cache_path, 'wb'))
+            model["ip_layers"] = ip_layers
+            print(f"wrote ip_layers to {ip_layers_cache_path}")
         return (model,)
 
 insightface_face_align = None
