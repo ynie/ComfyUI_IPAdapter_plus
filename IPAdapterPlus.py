@@ -582,6 +582,10 @@ class CrossAttentionPatch:
 
         return out.to(dtype=org_dtype)
 
+
+
+CACHED_IPADAPTER_MODELS = {}
+
 class IPAdapterModelLoader:
     @classmethod
     def INPUT_TYPES(s):
@@ -592,34 +596,43 @@ class IPAdapterModelLoader:
     CATEGORY = "ipadapter"
 
     def load_ipadapter_model(self, ipadapter_file):
-        ckpt_path = folder_paths.get_full_path("ipadapter", ipadapter_file)
-
-        model = comfy.utils.load_torch_file(ckpt_path, safe_load=True)
-
-        if ckpt_path.lower().endswith(".safetensors"):
-            st_model = {"image_proj": {}, "ip_adapter": {}}
-            for key in model.keys():
-                if key.startswith("image_proj."):
-                    st_model["image_proj"][key.replace("image_proj.", "")] = model[key]
-                elif key.startswith("ip_adapter."):
-                    st_model["ip_adapter"][key.replace("ip_adapter.", "")] = model[key]
-            model = st_model
-
-        if not "ip_adapter" in model.keys() or not model["ip_adapter"]:
-            raise Exception("invalid IPAdapter model {}".format(ckpt_path))
-
-        ip_layers_file_name = f"{Path(ckpt_path).stem}.ip_layers"
-        ip_layers_cache_path = folder_paths.get_full_path("ipadapter", ip_layers_file_name)
-        if ip_layers_cache_path:
-            model["ip_layers"] = pickle.load(open(ip_layers_cache_path, 'rb'))
-            print(f"Loading ip_layers from {ip_layers_cache_path}")
+        global CACHED_IPADAPTER_MODELS
+        if ipadapter_file in CACHED_IPADAPTER_MODELS:
+            model = CACHED_IPADAPTER_MODELS[ipadapter_file]
+            return (model,)
         else:
-            ip_layers = To_KV(model["ip_adapter"])
-            ip_layers_cache_path = os.path.join(pathlib.Path(ckpt_path).parent, ip_layers_file_name)
-            pickle.dump(ip_layers, open(ip_layers_cache_path, 'wb'))
-            model["ip_layers"] = ip_layers
-            print(f"wrote ip_layers to {ip_layers_cache_path}")
-        return (model,)
+            print(f"[SLOW MODEL LOADING] Loading IPADAPTER {ipadapter_file}.")
+            ckpt_path = folder_paths.get_full_path("ipadapter", ipadapter_file)
+
+            model = comfy.utils.load_torch_file(ckpt_path, safe_load=True)
+
+            if ckpt_path.lower().endswith(".safetensors"):
+                st_model = {"image_proj": {}, "ip_adapter": {}}
+                for key in model.keys():
+                    if key.startswith("image_proj."):
+                        st_model["image_proj"][key.replace("image_proj.", "")] = model[key]
+                    elif key.startswith("ip_adapter."):
+                        st_model["ip_adapter"][key.replace("ip_adapter.", "")] = model[key]
+                model = st_model
+
+            if not "ip_adapter" in model.keys() or not model["ip_adapter"]:
+                raise Exception("invalid IPAdapter model {}".format(ckpt_path))
+
+            ip_layers_file_name = f"{Path(ckpt_path).stem}.ip_layers"
+            ip_layers_cache_path = folder_paths.get_full_path("ipadapter", ip_layers_file_name)
+            if ip_layers_cache_path:
+                model["ip_layers"] = pickle.load(open(ip_layers_cache_path, 'rb'))
+                print(f"Loading ip_layers from {ip_layers_cache_path}")
+            else:
+                ip_layers = To_KV(model["ip_adapter"])
+                ip_layers_cache_path = os.path.join(pathlib.Path(ckpt_path).parent, ip_layers_file_name)
+                pickle.dump(ip_layers, open(ip_layers_cache_path, 'wb'))
+                model["ip_layers"] = ip_layers
+                print(f"wrote ip_layers to {ip_layers_cache_path}")
+
+            print(f"[SLOW MODEL LOADING] Finished loading IPADAPTER {ipadapter_file}.")
+            CACHED_IPADAPTER_MODELS[ipadapter_file] = model
+            return (model,)
 
 insightface_face_align = None
 class InsightFaceLoader:
